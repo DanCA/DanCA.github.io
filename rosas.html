@@ -436,162 +436,183 @@
     </div>
 
     <script type="text/python">
-       from browser import document, window
-from browser.timer import set_timeout, clear_timeout
-import json
-import math
+        from browser import document, window
+        from browser.timer import set_timeout, clear_timeout
+        import json
 
-# Variables globales
-regions = []
-drawing_active = False
-current_region = 0
-drawing_timeout = None
-turtle_speed = 5
-
-# Canvas
-canvas = document['turtleCanvas']
-ctx = canvas.getContext('2d')
-canvas_width = canvas.width
-canvas_height = canvas.height
-
-# Variables de dibujo
-center_x = 0
-center_y = 0
-scale = 1
-
-
-def clear_canvas():
-    ctx.clearRect(0, 0, canvas_width, canvas_height)
-    ctx.fillStyle = 'rgba(255,255,255,0.05)'
-    ctx.fillRect(0, 0, canvas_width, canvas_height)
-
-
-def load_data():
-    global regions, center_x, center_y, scale
-    try:
-        import urllib.request
-
-        response = urllib.request.urlopen("./rosas.json")
-        data = response.read().decode("utf-8")
-        regions = json.loads(data)
-
-        # Calcular límites
-        all_points = [(p[0], p[1]) for r in regions for p in r["contour"]]
-        min_x = min(p[0] for p in all_points)
-        max_x = max(p[0] for p in all_points)
-        min_y = min(p[1] for p in all_points)
-        max_y = max(p[1] for p in all_points)
-
-        width = max_x - min_x
-        height = max_y - min_y
-
-        scale = min(600 / width, 600 / height)
-        center_x = (min_x + max_x) / 2
-        center_y = (min_y + max_y) / 2
-
-        document["status"].textContent = "Listo para dibujar 🌹"
-        return True
-
-    except Exception as e:
-        document["status"].textContent = f"Error cargando JSON: {e}"
-        return False
-
-
-def draw_region(region):
-    # Convertir puntos a canvas
-    pts = []
-    for px, py in region["contour"]:
-        x = (px - center_x) * scale + canvas_width / 2
-        y = (center_y - py) * scale + canvas_height / 2
-        pts.append((x, y))
-
-    # Color
-    r, g, b = region["color"]
-    color = f"rgb({int(r)}, {int(g)}, {int(b)})"
-    ctx.fillStyle = color
-    ctx.strokeStyle = color
-
-    # Dibujar
-    ctx.beginPath()
-    ctx.moveTo(pts[0][0], pts[0][1])
-    for x, y in pts[1:]:
-        ctx.lineTo(x, y)
-    ctx.closePath()
-    ctx.fill()
-
-
-def draw_next():
-    global current_region, drawing_active, drawing_timeout
-
-    if not drawing_active or current_region >= len(regions):
+        # Variables globales
+        turtle_data = None
         drawing_active = False
-        document["status"].className = "status completed"
-        document["status"].textContent = "Terminado 🌹💕"
-        return
+        current_shape = 0
+        drawing_timeout = None
+        turtle_speed = 5
 
-    # Dibujar una región
-    draw_region(regions[current_region])
+        # Canvas setup
+        canvas = document['turtleCanvas']
+        ctx = canvas.getContext('2d')
+        canvas_width = 800
+        canvas_height = 600
 
-    # Avanzar
-    current_region += 1
-    progress = int((current_region / len(regions)) * 100)
-    document["status"].textContent = f"Dibujando... {progress}%"
+        # Turtle variables
+        turtle_x = canvas_width // 2
+        turtle_y = canvas_height // 2
+        turtle_pen_down = True
 
-    # Seguir con velocidad ajustada
-    delay = max(5, 50 - turtle_speed * 5)
-    drawing_timeout = set_timeout(draw_next, delay)
+        def clear_canvas():
+            ctx.clearRect(0, 0, canvas_width, canvas_height)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.02)'
+            ctx.fillRect(0, 0, canvas_width, canvas_height)
 
+        def set_color(r, g, b):
+            ctx.strokeStyle = f'rgb({int(r*255)}, {int(g*255)}, {int(b*255)})'
+            ctx.fillStyle = f'rgb({int(r*255)}, {int(g*255)}, {int(b*255)})'
+            ctx.lineWidth = 1
 
-def start_drawing():
-    global drawing_active, current_region
+        def pen_up():
+            global turtle_pen_down
+            turtle_pen_down = False
 
-    if not regions:
-        if not load_data():
-            return
+        def pen_down():
+            global turtle_pen_down
+            turtle_pen_down = True
 
-    drawing_active = True
-    current_region = 0
-    clear_canvas()
-    document["status"].className = "status"
-    document["status"].textContent = "Comenzando dibujo..."
-    draw_next()
+        def goto(x, y):
+            global turtle_x, turtle_y
+            
+            # Scale coordinates
+            scale_factor = min(canvas_width, canvas_height) / 800
+            scaled_x = canvas_width // 2 + x * scale_factor * 0.8
+            scaled_y = canvas_height // 2 + y * scale_factor * 0.8
+            
+            if turtle_pen_down:
+                ctx.lineTo(scaled_x, scaled_y)
+            
+            turtle_x = scaled_x
+            turtle_y = scaled_y
 
+        def begin_fill():
+            ctx.beginPath()
+            global first_point
+            first_point = (turtle_x, turtle_y)
 
-def pause_drawing():
-    global drawing_active, drawing_timeout
-    drawing_active = False
-    if drawing_timeout:
-        clear_timeout(drawing_timeout)
-    document["status"].textContent = "Pausado ⏸️"
+        def end_fill():
+            if 'first_point' in globals():
+                ctx.lineTo(first_point[0], first_point[1])
+            ctx.fill()
 
+        def load_data():
+            global turtle_data
+            try:
+                import urllib.request
+                response = urllib.request.urlopen('./assets/data.json')
+                data = response.read()
+                if isinstance(data, bytes):
+                    data = data.decode('utf-8')
+                turtle_data = json.loads(data)
+                document['status'].textContent = "Listo para dibujar 💕"
+                return True
+            except Exception as e:
+                document['status'].textContent = f"Error: {str(e)}"
+                return False
 
-def reset_drawing():
-    global drawing_active, current_region, drawing_timeout
-    drawing_active = False
-    current_region = 0
-    if drawing_timeout:
-        clear_timeout(drawing_timeout)
-    clear_canvas()
-    document["status"].textContent = "Listo para comenzar 💕"
+        def draw_next():
+            global current_shape, drawing_active, drawing_timeout
+            
+            try:
+                if not drawing_active or not turtle_data:
+                    return
+                
+                if current_shape >= len(turtle_data["coordenadas"]):
+                    drawing_active = False
+                    status_element = document['status']
+                    status_element.textContent = "¡Dibujado! 🌷💕"
+                    status_element.className = 'status completed'
+                    return
+                
+                # Dibujar forma completa
+                shape = turtle_data["coordenadas"][current_shape]
+                color = turtle_data["color"][current_shape]
+                
+                progress_percentage = int(((current_shape + 1) / len(turtle_data['coordenadas'])) * 100)
+                document['status'].textContent = f"Dibujando... {progress_percentage}% 💕"
+                
+                # Configurar color
+                set_color(color[0], color[1], color[2])
+                begin_fill()
+                
+                # Dibujar toda la forma
+                pen_up()
+                goto(shape[0][0], shape[0][1])
+                pen_down()
+                
+                # Mover al primer punto para comenzar el relleno
+                ctx.moveTo(turtle_x, turtle_y)
+                
+                for i in range(1, len(shape)):
+                    goto(shape[i][0], shape[i][1])
+                
+                end_fill()
+                current_shape += 1
+                
+                # Siguiente forma con velocidad ajustable
+                if drawing_active:
+                    delay = max(5, 50 - turtle_speed * 5)
+                    drawing_timeout = set_timeout(draw_next, delay)
+                    
+            except Exception as e:
+                document['status'].textContent = f"Error en dibujo: {str(e)}"
+                drawing_active = False
 
+        def start_drawing():
+            global drawing_active, current_shape, drawing_timeout
+            
+            if not turtle_data:
+                if not load_data():
+                    return
+            
+            # Limpiar timeout anterior si existe
+            if drawing_timeout:
+                clear_timeout(drawing_timeout)
+            
+            drawing_active = True
+            current_shape = 0
+            clear_canvas()
+            document['status'].textContent = f"Dibujando {len(turtle_data['coordenadas'])} formas de amor..."
+            draw_next()
 
-def update_speed():
-    global turtle_speed
-    val = int(document["speed"].value)
-    turtle_speed = val
-    document["speedValue"].textContent = str(val)
+        def pause_drawing():
+            global drawing_active, drawing_timeout
+            drawing_active = False
+            if drawing_timeout:
+                clear_timeout(drawing_timeout)
+            document['status'].textContent = "Dibujo pausado 💕"
 
+        def reset_drawing():
+            global drawing_active, current_shape, drawing_timeout
+            drawing_active = False
+            if drawing_timeout:
+                clear_timeout(drawing_timeout)
+            current_shape = 0
+            clear_canvas()
+            document['status'].textContent = "Listo para dibujar tulipanes de amor 💕"
 
-# Conectar con botones JS
-window.startDrawing = start_drawing
-window.pauseDrawing = pause_drawing
-window.resetDrawing = reset_drawing
-window.updateSpeed = update_speed
+        def update_speed():
+            global turtle_speed
+            speed_element = document['speed']
+            speed_value_element = document['speedValue']
+            turtle_speed = int(speed_element.value)
+            speed_value_element.textContent = str(turtle_speed)
 
-clear_canvas()
-document["status"].textContent = "Cargando datos..."
-load_data()
+        # Configurar funciones globales para JavaScript
+        window.startDrawing = start_drawing
+        window.pauseDrawing = pause_drawing
+        window.resetDrawing = reset_drawing
+        window.updateSpeed = update_speed
 
+        # Inicialización
+        clear_canvas()
+        document['status'].textContent = "Cargando datos de amor..."
+        load_data()
     </script>
     
     <!-- Créditos -->
